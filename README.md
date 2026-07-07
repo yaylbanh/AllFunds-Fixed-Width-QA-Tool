@@ -45,46 +45,54 @@ See [`USAGE.md`](USAGE.md) for the full workflow.
 ## Record type coverage
 
 AllFunds' fixed-width interface has dozens of record types (orders, prices, balances, rebates,
-dividends, control files, …). This tool only decodes field-by-field the ones checked below — anything
-else is **still safe to load and export** (bytes are preserved exactly, nothing is ever corrupted), it's
-just shown as a read-only raw line instead of an editable table, because it hasn't been mapped yet.
+dividends, control files, …). This tool only decodes field-by-field the ones marked **✅ Supported**
+below — anything else is **still safe to load and export** (bytes are preserved exactly, nothing is
+ever corrupted), it's just shown as a read-only raw line instead of an editable table, because it
+hasn't been mapped yet.
 
-- [x] **Record 24 / Subtype 01** — Confirmation (main use case: edit + export)
-- [x] **Record 71** — Fund catalogue, all subtypes (01–06, 10–14, 20, 30, 40, 55)
-- [x] **Record 98** — Control / trailer record (counters auto-recompute on edit)
-- [ ] **Record 24 / Subtype 01 (dividend variant)** — recognized and shown read-only, not editable yet
-- [ ] **Record 04** — Product
-- [ ] **Record 05** — Contract
-- [ ] **Record 06** — CCC/CCV
-- [ ] **Record 08** — Commitment
-- [ ] **Record 10** — Orders (in/out)
-- [ ] **Record 11** — ETF orders (in/out)
-- [ ] **Record 15** — Pledge
-- [ ] **Record 20** — Price
-- [ ] **Record 21** — MOC price
-- [ ] **Record 23** — Partial confirmation
-- [ ] **Record 25** — Initial load
-- [ ] **Record 26** — Mergers
-- [ ] **Record 27** — Splits
-- [ ] **Record 28** — Currency redenomination
-- [ ] **Record 30** — Balance
-- [ ] **Record 34** — Balance (distributor-fund)
-- [ ] **Record 35** — Subdistributor
-- [ ] **Record 36** — Balance (end of month)
-- [ ] **Record 50** — Balance live items
-- [ ] **Record 60** — Settlement notice (incl. dividends variant)
-- [ ] **Record 71** — ETF catalogue (different spec from the Fund catalogue above, despite same number)
-- [ ] **Record 72** — Hedge fund collapse
-- [ ] **Record 73** — EMT
-- [ ] **Record 74** — PRIIPS-EPT
-- [ ] **Record 75** — MIFID ex post
-- [ ] **Record 77** — EET
-- [ ] **Record 86** — Official standards
-- [ ] **Record 90/91/93** — Rebates
-- [ ] **Record 92** — Rebates full catalogue
-- [ ] **Record 94/95/96** — Rebates consolidated (quarterly)
-- [ ] **Record 98/99 — file-level ACK/NACK** — separate small response files, not the 800-byte batch
-      format above; would need a different parser, not just a new schema entry
+| Status | Meaning |
+|---|---|
+| ✅ **Supported** | Decoded field-by-field, editable, exports byte-exact |
+| ⚠️ **Read-only** | Recognized, but fields can't be edited yet |
+| ❌ **Not yet** | Not decoded — loads/exports fine as a raw, unreadable line |
 
-Want to help extend one of these? Open an issue/PR — each unchecked record just needs its byte-position
+| Record type | Status |
+|---|---|
+| Record 24 / Subtype 01 — Confirmation | ✅ Supported |
+| Record 71 — Fund catalogue, all subtypes (01–06, 10–14, 20, 30, 40, 55) | ✅ Supported |
+| Record 98 — Control / trailer record | ✅ Supported |
+| Record 24 / Subtype 01 — Dividend variant | ⚠️ Read-only |
+| Record 04 — Product | ❌ Not yet |
+| Record 05 — Contract | ❌ Not yet |
+| Record 06 — CCC/CCV | ❌ Not yet |
+| Record 08 — Commitment | ❌ Not yet |
+| Record 10 — Orders (in/out) | ❌ Not yet |
+| Record 11 — ETF orders (in/out) | ❌ Not yet |
+| Record 15 — Pledge | ❌ Not yet |
+| Record 20 — Price | ❌ Not yet |
+| Record 21 — MOC price | ❌ Not yet |
+| Record 23 — Partial confirmation | ❌ Not yet |
+| Record 25 — Initial load | ❌ Not yet |
+| Record 26 — Mergers | ❌ Not yet |
+| Record 27 — Splits | ❌ Not yet |
+| Record 28 — Currency redenomination | ❌ Not yet |
+| Record 30 — Balance | ❌ Not yet |
+| Record 34 — Balance (distributor-fund) | ❌ Not yet |
+| Record 35 — Subdistributor | ❌ Not yet |
+| Record 36 — Balance (end of month) | ❌ Not yet |
+| Record 50 — Balance live items | ❌ Not yet |
+| Record 60 — Settlement notice (incl. dividends variant) | ❌ Not yet |
+| Record 71 — ETF catalogue *(different spec from Fund catalogue above, despite same number)* | ❌ Not yet |
+| Record 72 — Hedge fund collapse | ❌ Not yet |
+| Record 73 — EMT | ❌ Not yet |
+| Record 74 — PRIIPS-EPT | ❌ Not yet |
+| Record 75 — MIFID ex post | ❌ Not yet |
+| Record 77 — EET | ❌ Not yet |
+| Record 86 — Official standards | ❌ Not yet |
+| Record 90/91/93 — Rebates | ❌ Not yet |
+| Record 92 — Rebates full catalogue | ❌ Not yet |
+| Record 94/95/96 — Rebates consolidated (quarterly) | ❌ Not yet |
+| Record 98/99 — file-level ACK/NACK *(separate small response files, not the 800-byte batch format above — needs a different parser, not just a new schema)* | ❌ Not yet |
+
+Want to help extend one of these? Open an issue/PR — each "Not yet" record just needs its byte-position
 field map added to the `SCHEMAS` object in `index.html`, the same way Record 71 was done.
