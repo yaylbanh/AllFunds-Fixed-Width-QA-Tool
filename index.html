@@ -51,16 +51,26 @@
   .fieldmap-table td, .fieldmap-table th{padding:2px 6px;border:1px solid var(--border);font-size:11px;}
   .fieldmap-table{border-collapse:collapse;font-family:Consolas,monospace;}
   .note{background:#fff8e1;border:1px solid #f0d78c;padding:8px 10px;margin:10px 12px;font-size:11.5px;}
+  .iconbtn{background:#fff;border:1px solid var(--border);border-radius:14px;padding:4px 10px;font-size:11px;cursor:pointer;}
+  .iconbtn:hover{background:#eef6ff;border-color:var(--accent);}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;}
+  .modal{background:#fff;border-radius:8px;padding:20px 24px;max-width:720px;max-height:82vh;overflow:auto;position:relative;box-shadow:0 8px 30px rgba(0,0,0,.25);}
+  .modal h2{margin:0 0 10px 0;font-size:16px;}
+  .modal .fieldmap-table{width:100%;margin-bottom:14px;}
+  .modal .fieldmap-table td, .modal .fieldmap-table th{padding:4px 8px;}
+  .modalclose{position:absolute;top:10px;right:10px;border:none;background:none;font-size:16px;cursor:pointer;color:#666;padding:2px 6px;}
+  .modalclose:hover{color:#000;}
 </style>
 
 <header>
   <h1>AllFunds FixedWidth QA Toolkit</h1>
+  <button id="btnCoverage" class="iconbtn" title="Which record types this tool supports">ℹ️ Coverage</button>
   <span class="sub">Distributor CCBI 13822 · Session 0 = 04:00 HKT</span>
   <input type="file" id="fileInput" accept=".txt,.dat,.OK,.ACK,.NACK" style="display:none">
   <button id="btnChoose">Open file…</button>
   <span id="fileMeta"></span>
   <span style="flex:1"></span>
-  <span class="credit">Hoa Vo - Product TTLVN</span>
+  <span class="credit">Hoa Vo - Product TTLVN · Last update: 2026-07-07</span>
   <button id="btnVerify">Verify round-trip</button>
   <button id="btnFilterScope" disabled>Filter to scope (R24/01, op 10/20)</button>
   <input type="text" id="isinInput" placeholder="ISIN / Fund code…" style="width:120px" disabled
@@ -68,6 +78,30 @@
   <button id="btnExportIsin" disabled>Export by ISIN</button>
   <button id="btnExport" class="primary" disabled>Export .txt</button>
 </header>
+
+<div id="coverageOverlay" class="overlay" style="display:none">
+  <div class="modal">
+    <button id="btnCloseCoverage" class="modalclose" title="Close">✕</button>
+    <h2>Record type coverage</h2>
+    <p class="hint">AllFunds' fixed-width interface has dozens of record types (orders, prices,
+      balances, rebates, dividends, control files, …). This tool only decodes field-by-field the ones
+      marked <b>✅ Supported</b> below — anything else is <b>still safe to load and export</b> (bytes
+      are preserved exactly, nothing is ever corrupted), it's just shown as a read-only raw line
+      instead of an editable table, because it hasn't been mapped yet.</p>
+    <table class="fieldmap-table">
+      <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>✅ <b>Supported</b></td><td>Decoded field-by-field, editable, exports byte-exact</td></tr>
+        <tr><td>⚠️ <b>Read-only</b></td><td>Recognized, but fields can't be edited yet</td></tr>
+        <tr><td>❌ <b>Not yet</b></td><td>Not decoded — loads/exports fine as a raw, unreadable line</td></tr>
+      </tbody>
+    </table>
+    <table class="fieldmap-table">
+      <thead><tr><th>Record type</th><th>Status</th></tr></thead>
+      <tbody id="coverageRows"></tbody>
+    </table>
+  </div>
+</div>
 
 <div id="dropzone">Drag &amp; drop a fixed-width AllFunds file here, or click "Open file…" above.</div>
 
@@ -1614,6 +1648,53 @@ function loadFile(file){
   };
   reader.readAsArrayBuffer(file);
 }
+
+const COVERAGE = [
+  ['Record 24 / Subtype 01 — Confirmation', '✅ Supported'],
+  ['Record 71 — Fund catalogue, all subtypes (01–06, 10–14, 20, 30, 40, 55)', '✅ Supported'],
+  ['Record 98 — Control / trailer record', '✅ Supported'],
+  ['Record 24 / Subtype 01 — Dividend variant', '⚠️ Read-only'],
+  ['Record 04 — Product', '❌ Not yet'],
+  ['Record 05 — Contract', '❌ Not yet'],
+  ['Record 06 — CCC/CCV', '❌ Not yet'],
+  ['Record 08 — Commitment', '❌ Not yet'],
+  ['Record 10 — Orders (in/out)', '❌ Not yet'],
+  ['Record 11 — ETF orders (in/out)', '❌ Not yet'],
+  ['Record 15 — Pledge', '❌ Not yet'],
+  ['Record 20 — Price', '❌ Not yet'],
+  ['Record 21 — MOC price', '❌ Not yet'],
+  ['Record 23 — Partial confirmation', '❌ Not yet'],
+  ['Record 25 — Initial load', '❌ Not yet'],
+  ['Record 26 — Mergers', '❌ Not yet'],
+  ['Record 27 — Splits', '❌ Not yet'],
+  ['Record 28 — Currency redenomination', '❌ Not yet'],
+  ['Record 30 — Balance', '❌ Not yet'],
+  ['Record 34 — Balance (distributor-fund)', '❌ Not yet'],
+  ['Record 35 — Subdistributor', '❌ Not yet'],
+  ['Record 36 — Balance (end of month)', '❌ Not yet'],
+  ['Record 50 — Balance live items', '❌ Not yet'],
+  ['Record 60 — Settlement notice (incl. dividends variant)', '❌ Not yet'],
+  ['Record 71 — ETF catalogue (different spec from Fund catalogue above, despite same number)', '❌ Not yet'],
+  ['Record 72 — Hedge fund collapse', '❌ Not yet'],
+  ['Record 73 — EMT', '❌ Not yet'],
+  ['Record 74 — PRIIPS-EPT', '❌ Not yet'],
+  ['Record 75 — MIFID ex post', '❌ Not yet'],
+  ['Record 77 — EET', '❌ Not yet'],
+  ['Record 86 — Official standards', '❌ Not yet'],
+  ['Record 90/91/93 — Rebates', '❌ Not yet'],
+  ['Record 92 — Rebates full catalogue', '❌ Not yet'],
+  ['Record 94/95/96 — Rebates consolidated (quarterly)', '❌ Not yet'],
+  ['Record 98/99 — file-level ACK/NACK (separate small response files, needs a different parser)', '❌ Not yet']
+];
+$('#coverageRows').innerHTML = COVERAGE.map(([name, status]) =>
+  '<tr><td>' + name + '</td><td style="white-space:nowrap">' + status + '</td></tr>').join('');
+
+function openCoverage(){ $('#coverageOverlay').style.display = 'flex'; }
+function closeCoverage(){ $('#coverageOverlay').style.display = 'none'; }
+$('#btnCoverage').onclick = openCoverage;
+$('#btnCloseCoverage').onclick = closeCoverage;
+$('#coverageOverlay').addEventListener('click', e => { if (e.target.id === 'coverageOverlay') closeCoverage(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCoverage(); });
 
 $('#btnChoose').onclick = () => fileInput.click();
 fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
