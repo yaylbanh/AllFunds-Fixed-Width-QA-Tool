@@ -31,7 +31,12 @@ preserved exactly.
 
 ## Quick start
 
-1. Download `AllFunds-Fixed-Width-QA-Tool.html`.
+**Try it online:** https://yaylbanh.github.io/AllFunds-Fixed-Width-QA-Tool/ — runs entirely in your
+browser, nothing is uploaded anywhere.
+
+Or run it locally:
+
+1. Download `index.html` from this repo.
 2. Open it in any modern browser (Chrome/Edge/Firefox) — no server, no build step.
 3. Drop a fixed-width file onto it, click **Verify round-trip**, then explore the tabs.
 

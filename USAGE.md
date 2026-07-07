@@ -1,6 +1,6 @@
-# AllFunds Fixed-Width QA Tool — usage (CORE-31784)
+# AllFunds FixedWidth QA Toolkit — usage
 
-Single file, offline, no install: double-click `AllFunds-Fixed-Width-QA-Tool.html` to open it in any browser
+Single file, offline, no install: double-click `index.html` to open it in any browser
 (Chrome/Edge/Firefox). Nothing is uploaded anywhere — parsing/editing/export all happen locally in the page.
 
 ## Workflow
