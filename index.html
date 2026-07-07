@@ -1295,7 +1295,8 @@ const state = {
   originalText: null,   // pristine text exactly as loaded, never mutated
   records: [],           // live, editable
   activeTab: null,
-  searchQuery: ''        // live ISIN/Fund code search — display-only, never touches records
+  searchQuery: '',       // live ISIN/Fund code search — display-only, never touches records
+  dirty: false           // true once there are edits not yet exported — guards against losing them
 };
 
 // Preferred tab ordering; any schema key present in a loaded file but not
@@ -1466,6 +1467,7 @@ function renderSchemaTable(schemaKey, records){
     const rec = blankRecordFor(schemaKey);
     insertRecordNear(rec, ref);
     recomputeDerivedFields(state.records);
+    state.dirty = true;
     renderAll();
   };
   toolbar.appendChild(addBtn);
@@ -1519,14 +1521,17 @@ function renderSchemaTable(schemaKey, records){
       copy.editedFields = new Set(rec.editedFields);
       insertRecordNear(copy, rec);
       recomputeDerivedFields(state.records);
+      state.dirty = true;
       renderAll();
     };
     const delBtn = document.createElement('button');
     delBtn.textContent = 'Del'; delBtn.className = 'small'; delBtn.style.marginLeft = '3px';
     delBtn.onclick = () => {
+      if (!confirm('Delete row ' + (rowIdx+1) + '? This cannot be undone.')) return;
       const idx = state.records.indexOf(rec);
       if (idx >= 0) state.records.splice(idx, 1);
       recomputeDerivedFields(state.records);
+      state.dirty = true;
       renderAll();
     };
     opTd.appendChild(document.createTextNode((rowIdx+1) + ' '));
@@ -1571,6 +1576,7 @@ function renderSchemaTable(schemaKey, records){
         input.classList.remove('invalid');
         input.classList.add('edited');
         input.title = fieldTitle(f, v);
+        state.dirty = true;
       });
       td.appendChild(input);
       tr.appendChild(td);
@@ -1630,6 +1636,11 @@ function detectLineEnding(text){
 }
 
 function loadFile(file){
+  if (state.dirty && !confirm(
+    'You have unsaved edits on "' + (state.fileName || 'the current file') + '".\n' +
+    'Loading a new file will DISCARD them — export first if you want to keep them.\n\n' +
+    'Load "' + file.name + '" anyway and lose the current edits?'
+  )) return;
   const reader = new FileReader();
   reader.onload = () => {
     const bytes = new Uint8Array(reader.result);
@@ -1639,6 +1650,7 @@ function loadFile(file){
     state.records = parseFile(text);
     state.activeTab = null;
     state.searchQuery = '';
+    state.dirty = false;
     $('#isinInput').value = '';
     const ending = detectLineEnding(text);
     fileMetaEl.textContent = file.name + '  ·  ' + bytes.length + ' bytes  ·  ' +
@@ -1705,6 +1717,24 @@ dropzone.addEventListener('drop', e => {
   if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
 });
 
+// Dropping anywhere else on the page (e.g. onto the data table, not just the
+// dropzone box) would otherwise make the browser navigate away and open the
+// raw file, silently wiping out the whole app and any unsaved edits. Catch it
+// everywhere so a slightly-off drop still loads the file (through the same
+// unsaved-edits guard in loadFile) instead of destroying the page.
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  if (e.target === dropzone || dropzone.contains(e.target)) return; // already handled above
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+
+window.addEventListener('beforeunload', e => {
+  if (!state.dirty) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 function downloadText(text, filename){
   const bytes = binaryStringToBytes(text);
   const blob = new Blob([bytes], { type: 'application/octet-stream' });
@@ -1724,6 +1754,7 @@ $('#btnExport').onclick = () => {
     const text = serializeRecords(state.records);
     const base = (state.fileName || 'export.txt').replace(/\.[^.]+$/, '');
     downloadText(text, base + '_edited.txt');
+    state.dirty = false;
     log('Exported ' + state.records.length + ' records → ' + base + '_edited.txt', 'ok');
   } catch (e){
     log('Export failed: ' + e.message, 'err');
