@@ -1,0 +1,11 @@
+# Internal AllFunds spec PDFs — proprietary, not for public repo
+/Record Types/
+
+# Sample data — includes real production-derived fund/ISIN data
+/Samples/
+
+# Ad-hoc local test exports (real fund codes/ISINs)
+/*.txt
+
+# Internal-only spec coverage notes (references confidential specs/tickets)
+SPEC_COVERAGE.md
