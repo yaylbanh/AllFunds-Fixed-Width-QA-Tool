@@ -60,6 +60,22 @@
   .modal .fieldmap-table td, .modal .fieldmap-table th{padding:4px 8px;}
   .modalclose{position:absolute;top:10px;right:10px;border:none;background:none;font-size:16px;cursor:pointer;color:#666;padding:2px 6px;}
   .modalclose:hover{color:#000;}
+  button.danger{background:#c0392b;color:#fff;border-color:#c0392b;}
+  button.danger:hover{background:#a5281c;}
+  .headerSep{width:1px;height:20px;background:var(--border);}
+  .isinToolModal{background:#fff;border:1px solid var(--border);border-radius:6px;width:400px;max-width:92vw;
+    padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:12px;}
+  .isinToolModal h2{font-size:13px;margin:0 0 4px 0;}
+  .isinToolModal .modalHint{color:#777;font-size:10.5px;margin:0 0 10px 0;}
+  .isinToolModal .field{margin-bottom:10px;}
+  .isinToolModal label{display:block;font-size:11px;color:#555;margin-bottom:3px;}
+  .isinToolModal input[type=text]{width:100%;padding:5px 6px;border:1px solid var(--border);border-radius:4px;
+    font-size:12px;font-family:inherit;}
+  .isinToolModal input[type=text]:focus{border-color:var(--accent);outline:none;}
+  .isinToolModal .preview{font-size:11px;color:#444;background:var(--bg);border:1px solid var(--border);
+    border-radius:4px;padding:6px 8px;margin-bottom:12px;min-height:14px;line-height:1.4;}
+  .isinToolModal .preview.warn{background:#fdecea;border-color:#e8590c;color:#a5281c;}
+  .isinToolModal .footer{display:flex;justify-content:flex-end;gap:6px;}
 </style>
 
 <header>
@@ -76,6 +92,10 @@
   <input type="text" id="isinInput" placeholder="ISIN / Fund code…" style="width:120px" disabled
     title="Type to highlight matching rows in the current tab. Press Enter or click 'Export by ISIN' to export exact matches.">
   <button id="btnExportIsin" disabled>Export by ISIN</button>
+  <span class="headerSep"></span>
+  <button id="btnCloneIsin" disabled title="Duplicate every record of one ISIN under a new ISIN">Clone ISIN…</button>
+  <button id="btnDeleteIsin" disabled title="Remove every record of one ISIN from the current session">Delete ISIN…</button>
+  <span class="headerSep"></span>
   <button id="btnExport" class="primary" disabled>Export .txt</button>
 </header>
 
@@ -1346,6 +1366,8 @@ function renderAll(){
   $('#btnFilterScope').disabled = state.records.length === 0;
   $('#isinInput').disabled = state.records.length === 0;
   $('#btnExportIsin').disabled = state.records.length === 0;
+  $('#btnCloneIsin').disabled = state.records.length === 0;
+  $('#btnDeleteIsin').disabled = state.records.length === 0;
 }
 
 function renderTabs(){
@@ -1878,5 +1900,240 @@ $('#btnVerify').onclick = () => {
     'lengths: original=' + original.length + '  rebuilt=' + rebuilt.length + '\n' +
     'original: ' + origCtx + '\n' +
     'rebuilt : ' + rebCtx, 'err');
+};
+
+/* ===================== 8. CLONE / DELETE BY ISIN ===================== */
+/* Whole-ISIN tools: unlike the per-row Clone/Del buttons in each tab, these
+   act across every tab at once (a fund's data is spread across 24|01, 71|xx,
+   etc). Kept behind a small centered modal instead of permanent header
+   fields so the header doesn't keep growing every time a new bulk tool is
+   added. Reuses the existing .overlay backdrop from the Coverage modal. */
+
+let isinModalEscHandler = null;
+
+function closeIsinModal(){
+  const ov = document.getElementById('isinToolOverlay');
+  if (ov) ov.remove();
+  if (isinModalEscHandler) document.removeEventListener('keydown', isinModalEscHandler);
+  isinModalEscHandler = null;
+}
+
+function openIsinModal(title, hint, build){
+  closeIsinModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'isinToolOverlay';
+  overlay.addEventListener('mousedown', e => { if (e.target === overlay) closeIsinModal(); });
+  const modal = document.createElement('div');
+  modal.className = 'isinToolModal';
+  const h2 = document.createElement('h2');
+  h2.textContent = title;
+  modal.appendChild(h2);
+  if (hint){
+    const p = document.createElement('div');
+    p.className = 'modalHint';
+    p.textContent = hint;
+    modal.appendChild(p);
+  }
+  build(modal);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  isinModalEscHandler = e => { if (e.key === 'Escape') closeIsinModal(); };
+  document.addEventListener('keydown', isinModalEscHandler);
+  const firstInput = modal.querySelector('input');
+  if (firstInput) firstInput.focus();
+}
+
+function tabLabelForSchemaKey(schemaKey){
+  return (schemaKey && SCHEMAS[schemaKey]) ? SCHEMAS[schemaKey].label : 'Unparsed / Raw';
+}
+
+function summarizeByTab(records){
+  const counts = {};
+  for (const r of records){
+    const key = r.schemaKey || 'raw';
+    (counts[key] = counts[key] || { label: tabLabelForSchemaKey(r.schemaKey), n: 0 }).n++;
+  }
+  return Object.values(counts).sort((a, b) => b.n - a.n);
+}
+
+function fundCodeFieldName(rec){
+  return rec.values['Fund code'] !== undefined ? 'Fund code' : 'Code of fund';
+}
+
+$('#btnCloneIsin').onclick = () => {
+  openIsinModal('Clone ISIN / Fund code',
+    'Duplicates every record of the source code, across every tab, under the new code. ' +
+    'Everything else on each cloned row is copied as-is.',
+    modal => {
+      const srcField = document.createElement('div'); srcField.className = 'field';
+      srcField.innerHTML = '<label>Source ISIN / Fund code</label>';
+      const srcInput = document.createElement('input'); srcInput.type = 'text';
+      srcInput.value = $('#isinInput').value.trim();
+      srcField.appendChild(srcInput);
+      modal.appendChild(srcField);
+
+      const dstField = document.createElement('div'); dstField.className = 'field';
+      dstField.innerHTML = '<label>New ISIN / Fund code</label>';
+      const dstInput = document.createElement('input'); dstInput.type = 'text';
+      dstField.appendChild(dstInput);
+      modal.appendChild(dstField);
+
+      const preview = document.createElement('div'); preview.className = 'preview';
+      preview.textContent = 'Enter a source code to see what will be cloned.';
+      modal.appendChild(preview);
+
+      const footer = document.createElement('div'); footer.className = 'footer';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.onclick = closeIsinModal;
+      const cloneBtn = document.createElement('button');
+      cloneBtn.className = 'primary'; cloneBtn.textContent = 'Clone'; cloneBtn.disabled = true;
+      footer.appendChild(cancelBtn);
+      footer.appendChild(cloneBtn);
+      modal.appendChild(footer);
+
+      function refresh(){
+        const src = srcInput.value.trim().toUpperCase();
+        const dst = dstInput.value.trim().toUpperCase();
+        cloneBtn.disabled = true;
+        if (!src){
+          preview.className = 'preview';
+          preview.textContent = 'Enter a source code to see what will be cloned.';
+          return;
+        }
+        const matched = state.records.filter(r => r.schemaKey && recordFundCode(r) === src);
+        if (matched.length === 0){
+          preview.className = 'preview warn';
+          preview.textContent = 'No records found with Fund code = "' + src + '".';
+          return;
+        }
+        const byTab = summarizeByTab(matched);
+        let text = matched.length + ' record(s) will be cloned across ' + byTab.length + ' tab(s): ' +
+          byTab.map(t => t.label + ' (' + t.n + ')').join(', ') + '.';
+        if (!dst){
+          preview.className = 'preview';
+          preview.textContent = text + ' Enter a new code to continue.';
+          return;
+        }
+        if (dst === src){
+          preview.className = 'preview warn';
+          preview.textContent = 'New code must be different from the source code.';
+          return;
+        }
+        const existing = state.records.filter(r => r.schemaKey && recordFundCode(r) === dst).length;
+        if (existing) text += ' Note: "' + dst + '" already has ' + existing + ' record(s) — clones will be added alongside them.';
+        preview.className = 'preview';
+        preview.textContent = text;
+        cloneBtn.disabled = false;
+      }
+      srcInput.addEventListener('input', refresh);
+      dstInput.addEventListener('input', refresh);
+      dstInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !cloneBtn.disabled) cloneBtn.click(); });
+      refresh();
+
+      cloneBtn.onclick = () => {
+        const src = srcInput.value.trim().toUpperCase();
+        const dst = dstInput.value.trim().toUpperCase();
+        const matched = state.records.filter(r => r.schemaKey && recordFundCode(r) === src);
+        let cloned = 0;
+        const failed = [];
+        for (const rec of matched){
+          const fieldName = fundCodeFieldName(rec);
+          const f = fieldOf(rec.schemaKey, fieldName);
+          if (dst.length > f.len){
+            failed.push(tabLabelForSchemaKey(rec.schemaKey) + ': code exceeds ' + f.len + ' chars');
+            continue;
+          }
+          const copy = makeRecord(rec.raw, rec.ending);
+          copy.schemaKey = rec.schemaKey;
+          copy.values = Object.assign({}, rec.values);
+          copy.editedFields = new Set(rec.editedFields);
+          copy.values[fieldName] = dst;
+          copy.editedFields.add(fieldName);
+          copy.invalidFields.delete(fieldName);
+          insertRecordNear(copy, rec);
+          cloned++;
+        }
+        recomputeDerivedFields(state.records);
+        if (cloned > 0) state.dirty = true;
+        renderAll();
+        closeIsinModal();
+        $('#isinInput').value = dst;
+        state.searchQuery = dst;
+        renderActiveTab();
+        if (failed.length){
+          log('Cloned ' + cloned + '/' + matched.length + ' record(s) ' + src + ' → ' + dst +
+            '. Skipped: ' + failed.join(' | '), cloned ? 'ok' : 'err');
+        } else {
+          log('Cloned ISIN ' + src + ' → ' + dst + ': ' + cloned + ' record(s) across ' +
+            summarizeByTab(matched).length + ' tab(s).', 'ok');
+        }
+      };
+    });
+};
+
+$('#btnDeleteIsin').onclick = () => {
+  openIsinModal('Delete ISIN / Fund code',
+    'Removes every record of this code from the current session, across every tab. ' +
+    'Only affects this in-browser session — reload the original file to undo.',
+    modal => {
+      const field = document.createElement('div'); field.className = 'field';
+      field.innerHTML = '<label>ISIN / Fund code to delete</label>';
+      const input = document.createElement('input'); input.type = 'text';
+      input.value = $('#isinInput').value.trim();
+      field.appendChild(input);
+      modal.appendChild(field);
+
+      const preview = document.createElement('div'); preview.className = 'preview';
+      preview.textContent = 'Enter a code to see what will be deleted.';
+      modal.appendChild(preview);
+
+      const footer = document.createElement('div'); footer.className = 'footer';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.onclick = closeIsinModal;
+      const delBtn = document.createElement('button');
+      delBtn.className = 'danger'; delBtn.textContent = 'Delete'; delBtn.disabled = true;
+      footer.appendChild(cancelBtn);
+      footer.appendChild(delBtn);
+      modal.appendChild(footer);
+
+      function refresh(){
+        const q = input.value.trim().toUpperCase();
+        delBtn.disabled = true;
+        if (!q){
+          preview.className = 'preview';
+          preview.textContent = 'Enter a code to see what will be deleted.';
+          return;
+        }
+        const matched = state.records.filter(r => r.schemaKey && recordFundCode(r) === q);
+        if (matched.length === 0){
+          preview.className = 'preview warn';
+          preview.textContent = 'No records found with Fund code = "' + q + '".';
+          return;
+        }
+        const byTab = summarizeByTab(matched);
+        preview.className = 'preview warn';
+        preview.textContent = 'This will permanently remove ' + matched.length + ' record(s) across ' +
+          byTab.length + ' tab(s): ' + byTab.map(t => t.label + ' (' + t.n + ')').join(', ') + '.';
+        delBtn.disabled = false;
+      }
+      input.addEventListener('input', refresh);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter' && !delBtn.disabled) delBtn.click(); });
+      refresh();
+
+      delBtn.onclick = () => {
+        const q = input.value.trim().toUpperCase();
+        const before = state.records.length;
+        state.records = state.records.filter(r => !(r.schemaKey && recordFundCode(r) === q));
+        const removed = before - state.records.length;
+        if (removed > 0) state.dirty = true;
+        recomputeDerivedFields(state.records);
+        renderAll();
+        closeIsinModal();
+        log('Deleted ISIN ' + q + ': removed ' + removed + ' record(s).', 'ok');
+      };
+    });
 };
 </script>
