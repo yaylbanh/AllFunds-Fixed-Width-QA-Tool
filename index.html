@@ -94,6 +94,7 @@
   <button id="btnExportIsin" disabled>Export by ISIN</button>
   <span class="headerSep"></span>
   <button id="btnCloneIsin" disabled title="Duplicate every record of one ISIN under a new ISIN">Clone ISIN…</button>
+  <button id="btnRenameIsin" disabled title="Rename every record of one ISIN to a new ISIN, in place">Rename ISIN…</button>
   <button id="btnDeleteIsin" disabled title="Remove every record of one ISIN from the current session">Delete ISIN…</button>
   <span class="headerSep"></span>
   <button id="btnExport" class="primary" disabled>Export .txt</button>
@@ -1367,6 +1368,7 @@ function renderAll(){
   $('#isinInput').disabled = state.records.length === 0;
   $('#btnExportIsin').disabled = state.records.length === 0;
   $('#btnCloneIsin').disabled = state.records.length === 0;
+  $('#btnRenameIsin').disabled = state.records.length === 0;
   $('#btnDeleteIsin').disabled = state.records.length === 0;
 }
 
@@ -1902,12 +1904,48 @@ $('#btnVerify').onclick = () => {
     'rebuilt : ' + rebCtx, 'err');
 };
 
-/* ===================== 8. CLONE / DELETE BY ISIN ===================== */
+/* ===================== 8. CLONE / RENAME / DELETE BY ISIN ===================== */
 /* Whole-ISIN tools: unlike the per-row Clone/Del buttons in each tab, these
    act across every tab at once (a fund's data is spread across 24|01, 71|xx,
    etc). Kept behind a small centered modal instead of permanent header
    fields so the header doesn't keep growing every time a new bulk tool is
    added. Reuses the existing .overlay backdrop from the Coverage modal. */
+
+/* ISO 6166 ISIN validation. The "Fund code" / "Code of fund" byte range can
+   also hold a CUSIP, SEDOL or free-text name (see FUND_ID_TYPES), so this is
+   used as a non-blocking warning in the Rename tool, not a hard gate — a
+   distributor feed or test fixture (e.g. "HOATEST00002") legitimately won't
+   pass it. */
+function isValidIsinFormat(code){
+  return /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(code);
+}
+function isinLettersToDigits(code){
+  let out = '';
+  for (const ch of code){
+    out += (ch >= '0' && ch <= '9') ? ch : String(ch.charCodeAt(0) - 55);
+  }
+  return out;
+}
+function isinChecksumOk(code){
+  const digits = isinLettersToDigits(code);
+  let sum = 0, double = false;
+  for (let i = digits.length - 1; i >= 0; i--){
+    let d = digits.charCodeAt(i) - 48;
+    if (double){ d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+    double = !double;
+  }
+  return sum % 10 === 0;
+}
+function isinFormatWarning(code){
+  if (!isValidIsinFormat(code)){
+    return '"' + code + '" doesn\'t look like a standard ISIN (expected 2 letters + 9 alphanumeric + 1 check digit, 12 chars total) — OK if this fund code is a CUSIP/SEDOL/name instead.';
+  }
+  if (!isinChecksumOk(code)){
+    return '"' + code + '" has the right ISIN shape but fails the ISO 6166 check-digit — double-check the last digit.';
+  }
+  return null;
+}
 
 let isinModalEscHandler = null;
 
@@ -2067,6 +2105,125 @@ $('#btnCloneIsin').onclick = () => {
             '. Skipped: ' + failed.join(' | '), cloned ? 'ok' : 'err');
         } else {
           log('Cloned ISIN ' + src + ' → ' + dst + ': ' + cloned + ' record(s) across ' +
+            summarizeByTab(matched).length + ' tab(s).', 'ok');
+        }
+      };
+    });
+};
+
+$('#btnRenameIsin').onclick = () => {
+  openIsinModal('Rename ISIN / Fund code',
+    'Renames every record of the source code, across every tab, to the new code in place — ' +
+    'no records are added or removed.',
+    modal => {
+      const srcField = document.createElement('div'); srcField.className = 'field';
+      srcField.innerHTML = '<label>Current ISIN / Fund code</label>';
+      const srcInput = document.createElement('input'); srcInput.type = 'text';
+      srcInput.value = $('#isinInput').value.trim();
+      srcField.appendChild(srcInput);
+      modal.appendChild(srcField);
+
+      const dstField = document.createElement('div'); dstField.className = 'field';
+      dstField.innerHTML = '<label>New ISIN / Fund code</label>';
+      const dstInput = document.createElement('input'); dstInput.type = 'text';
+      dstField.appendChild(dstInput);
+      modal.appendChild(dstField);
+
+      const preview = document.createElement('div'); preview.className = 'preview';
+      preview.textContent = 'Enter a source code to see what will be renamed.';
+      modal.appendChild(preview);
+
+      const footer = document.createElement('div'); footer.className = 'footer';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.onclick = closeIsinModal;
+      const renameBtn = document.createElement('button');
+      renameBtn.className = 'primary'; renameBtn.textContent = 'Rename'; renameBtn.disabled = true;
+      footer.appendChild(cancelBtn);
+      footer.appendChild(renameBtn);
+      modal.appendChild(footer);
+
+      function refresh(){
+        const src = srcInput.value.trim().toUpperCase();
+        const dst = dstInput.value.trim().toUpperCase();
+        renameBtn.disabled = true;
+        if (!src){
+          preview.className = 'preview';
+          preview.textContent = 'Enter a source code to see what will be renamed.';
+          return;
+        }
+        const matched = state.records.filter(r => r.schemaKey && recordFundCode(r) === src);
+        if (matched.length === 0){
+          preview.className = 'preview warn';
+          preview.textContent = 'No records found with Fund code = "' + src + '".';
+          return;
+        }
+        const byTab = summarizeByTab(matched);
+        let text = matched.length + ' record(s) will be renamed across ' + byTab.length + ' tab(s): ' +
+          byTab.map(t => t.label + ' (' + t.n + ')').join(', ') + '.';
+        if (!dst){
+          preview.className = 'preview';
+          preview.textContent = text + ' Enter a new code to continue.';
+          return;
+        }
+        if (dst === src){
+          preview.className = 'preview warn';
+          preview.textContent = 'New code must be different from the current code.';
+          return;
+        }
+        const maxLen = Math.max(...matched.map(r => fieldOf(r.schemaKey, fundCodeFieldName(r)).len));
+        if (dst.length > maxLen){
+          preview.className = 'preview warn';
+          preview.textContent = '"' + dst + '" is ' + dst.length + ' chars — exceeds the ' + maxLen + '-char Fund code field.';
+          return;
+        }
+        const existing = state.records.filter(r => r.schemaKey && recordFundCode(r) === dst).length;
+        if (existing) text += ' Note: "' + dst + '" already has ' + existing + ' record(s) — they will now share this code.';
+        const isinWarning = isinFormatWarning(dst);
+        if (isinWarning){
+          preview.className = 'preview warn';
+          preview.textContent = text + ' ⚠ ' + isinWarning;
+        } else {
+          preview.className = 'preview';
+          preview.textContent = text;
+        }
+        renameBtn.disabled = false;
+      }
+      srcInput.addEventListener('input', refresh);
+      dstInput.addEventListener('input', refresh);
+      dstInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !renameBtn.disabled) renameBtn.click(); });
+      refresh();
+
+      renameBtn.onclick = () => {
+        const src = srcInput.value.trim().toUpperCase();
+        const dst = dstInput.value.trim().toUpperCase();
+        const matched = state.records.filter(r => r.schemaKey && recordFundCode(r) === src);
+        let renamed = 0;
+        const failed = [];
+        for (const rec of matched){
+          const fieldName = fundCodeFieldName(rec);
+          const f = fieldOf(rec.schemaKey, fieldName);
+          if (dst.length > f.len){
+            failed.push(tabLabelForSchemaKey(rec.schemaKey) + ': code exceeds ' + f.len + ' chars');
+            continue;
+          }
+          rec.values[fieldName] = dst;
+          rec.editedFields.add(fieldName);
+          rec.invalidFields.delete(fieldName);
+          renamed++;
+        }
+        recomputeDerivedFields(state.records);
+        if (renamed > 0) state.dirty = true;
+        renderAll();
+        closeIsinModal();
+        $('#isinInput').value = dst;
+        state.searchQuery = dst;
+        renderActiveTab();
+        if (failed.length){
+          log('Renamed ' + renamed + '/' + matched.length + ' record(s) ' + src + ' → ' + dst +
+            '. Skipped: ' + failed.join(' | '), renamed ? 'ok' : 'err');
+        } else {
+          log('Renamed ISIN ' + src + ' → ' + dst + ': ' + renamed + ' record(s) across ' +
             summarizeByTab(matched).length + ' tab(s).', 'ok');
         }
       };
